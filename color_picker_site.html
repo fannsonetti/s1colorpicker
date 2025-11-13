@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S1 ColorPicker</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .controls button {
+      background: #242424;
+      color: #ddd;
+      border: 1px solid #444;
+      padding: 7px 14px;
+      margin: 0 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .controls button.active {
+      background: #3a6df0;
+      border-color: #5a8cff;
+      color: #fff;
+    }
+
+    .controls button:hover {
+      background: #333;
+    }
+
+    .controls button.active:hover {
+      background: #335cd0;
+    }
+
+    .picker-container {
+      display: grid;
+      grid-template-columns: repeat(9, 60px);
+      grid-template-rows: repeat(3, 60px);
+      gap: 12px;
+      margin: 0 auto;
+      width: max-content;
+    }
+
+    .color-swatch {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 1px solid #111;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.7);
+      transition: 0.12s;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.08);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.9);
+    }
+
+    #selectedColor {
+      margin: 25px auto 0;
+      padding: 10px 14px;
+      background: #000;
+      border-radius: 8px;
+      width: fit-content;
+      font-size: 1.05rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.7);
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>S1 ColorPicker</h1>
+
+<div class="controls">
+  <button id="desatBtn">Desaturate</button>
+  <button id="darkenBtn">Darken</button>
+  <button id="lightenBtn">Lighten</button>
+</div>
+
+<div class="picker-container" id="picker"></div>
+
+<div id="selectedColor">Selected Color: none</div>
+
+<script>
+const colors = [
+  { r:1.000, g:1.000, b:1.000 }, { r:0.717, g:0.717, b:0.717 },
+  { r:0.396, g:0.396, b:0.396 }, { r:0.236, g:0.236, b:0.236 },
+  { r:0.151, g:0.151, b:0.151 }, { r:1.000, g:0.599, b:0.599 },
+  { r:0.925, g:0.371, b:0.371 }, { r:0.651, g:0.236, b:0.236 },
+  { r:0.943, g:0.576, b:0.316 },
+
+  { r:0.745, g:0.550, b:0.341 }, { r:0.481, g:0.331, b:0.225 },
+  { r:0.943, g:0.704, b:0.458 }, { r:0.613, g:0.493, b:0.344 },
+  { r:1.000, g:0.756, b:0.212 }, { r:0.831, g:0.992, b:0.275 },
+  { r:0.655, g:0.991, b:0.313 }, { r:0.298, g:0.547, b:0.199 },
+  { r:0.329, g:0.906, b:0.883 },
+
+  { r:0.401, g:0.828, b:1.000 }, { r:0.326, g:0.578, b:0.896 },
+  { r:0.244, g:0.353, b:0.849 }, { r:0.178, g:0.217, b:0.406 },
+  { r:0.234, g:0.147, b:0.566 }, { r:0.510, g:0.200, b:0.717 },
+  { r:0.674, g:0.200, b:0.717 }, { r:0.896, g:0.258, b:0.870 },
+  { r:0.877, g:0.195, b:0.558 }
+];
+
+const picker       = document.getElementById("picker");
+const out          = document.getElementById("selectedColor");
+const desatBtn     = document.getElementById("desatBtn");
+const darkenBtn    = document.getElementById("darkenBtn");
+const lightenBtn   = document.getElementById("lightenBtn");
+
+let desatOn   = false;
+let darkenOn  = false;
+let lightenOn = false;
+let selectedIndex = null;
+
+function floatTo255(f){ return Math.round(f * 255); }
+function fmt(f){ return f.toFixed(3) + "f"; }
+
+// RGB (0–1) -> HSL (0–1)
+function rgbToHsl(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h, s;
+  const l = (max + min) / 2;
+
+  if (max === min) {
+    h = 0;
+    s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h, s, l };
+}
+
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 1/2) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+
+// HSL (0–1) -> RGB (0–1)
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return { r, g, b };
+}
+
+// Apply current effects to a base color
+function applyEffects(c) {
+  let { r, g, b } = c;
+  let { h, s, l } = rgbToHsl(r, g, b);
+
+  if (desatOn) {
+    s *= 0.75;          // remove 25% saturation
+  }
+  if (darkenOn) {
+    l *= 0.85;          // mild darken
+  }
+  if (lightenOn) {
+    l = Math.min(1, l + 0.15); // mild lighten
+  }
+
+  return hslToRgb(h, s, l);
+}
+
+function updateSelectedDisplay() {
+  if (selectedIndex === null) return;
+  const base = colors[selectedIndex];
+  const mod  = applyEffects(base);
+  out.textContent = `Selected Color: ${fmt(mod.r)}, ${fmt(mod.g)}, ${fmt(mod.b)}`;
+}
+
+function updateSwatches() {
+  picker.innerHTML = "";
+
+  colors.forEach((c, index) => {
+    const mod = applyEffects(c);
+    const r = mod.r, g = mod.g, b = mod.b;
+
+    const sw = document.createElement("div");
+    sw.className = "color-swatch";
+    sw.style.background = `rgb(${floatTo255(r)}, ${floatTo255(g)}, ${floatTo255(b)})`;
+
+    sw.onclick = () => {
+      selectedIndex = index;
+      updateSelectedDisplay();
+    };
+
+    picker.appendChild(sw);
+  });
+
+  // If a color was already selected, keep it updated
+  updateSelectedDisplay();
+}
+
+// Toggle handlers
+function toggleDesat() {
+  desatOn = !desatOn;
+  desatBtn.classList.toggle("active", desatOn);
+  updateSwatches();
+}
+
+function toggleDarken() {
+  const newState = !darkenOn;
+  darkenOn = newState;
+  if (darkenOn) {
+    lightenOn = false;
+    lightenBtn.classList.remove("active");
+  }
+  darkenBtn.classList.toggle("active", darkenOn);
+  updateSwatches();
+}
+
+function toggleLighten() {
+  const newState = !lightenOn;
+  lightenOn = newState;
+  if (lightenOn) {
+    darkenOn = false;
+    darkenBtn.classList.remove("active");
+  }
+  lightenBtn.classList.toggle("active", lightenOn);
+  updateSwatches();
+}
+
+desatBtn.onclick   = toggleDesat;
+darkenBtn.onclick  = toggleDarken;
+lightenBtn.onclick = toggleLighten;
+
+updateSwatches();
+</script>
+
+</body>
+</html>
